@@ -32,6 +32,10 @@ bash install.sh
 每次多步骤任务完成后，提取教训并固化。
 - Skill: `/retro` (调用执行完整复盘流程)
 
+### 4. Skills 沉淀
+把可复用的调研/分析 SOP 沉淀为 Claude Code skills，自动加载到上下文。
+- Skill: `skills/reddit-research/` — Reddit 深度调研工具集（Arctic Shift API + 备路径 + 痛点提取）
+
 ## 文件结构
 
 ```
@@ -43,8 +47,11 @@ rules/               Rules (每次对话自动加载)
   testing.md         测试覆盖要求
 hooks/               程序化自动检查
   dev-loop-check.js  Stop hook: 完成声明+错误率+纠正轮次
-commands/            Skills (手动调用)
+commands/            Slash Commands (/command 手动触发)
   retro.md           /retro 复盘迭代优化
+skills/              Skills (frontmatter description 自动加载)
+  reddit-research/   Reddit 调研：Arctic Shift API + fallback chain + 痛点提取 SOP
+    SKILL.md
 docs/                团队文档
   ai-dev-playbook.md AI 协作开发完整手册
 ```
@@ -55,6 +62,9 @@ docs/                团队文档
 cp rules/*.md ~/.claude/rules/common/
 cp hooks/*.js ~/.claude/hooks/
 cp commands/*.md ~/.claude/commands/
+# Skills 是目录结构，需要递归复制
+mkdir -p ~/.claude/skills
+cp -r skills/*/ ~/.claude/skills/
 ```
 
 在 `~/.claude/settings.json` 的 `hooks.Stop` 中添加：
