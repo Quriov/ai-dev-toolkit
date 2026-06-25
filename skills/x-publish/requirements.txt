@@ -1,0 +1,4 @@
+# X (Twitter) 发推 skill —— 本机依赖
+# 本机过不了 X 反爬,发推/回复同样通过 SSH 发到硅谷服务器执行(twikit 在那台机上跑)。
+# paramiko: Python 的 SSH/SFTP 客户端库,用来连服务器、上传远程脚本、执行并取回结果。
+paramiko>=3.0

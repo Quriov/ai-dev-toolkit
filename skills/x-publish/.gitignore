@@ -1,0 +1,13 @@
+# 凭据 / cookie / 密钥 —— 绝对不能进 git
+.secrets/
+*.cookies.json
+cookies.json
+*.env
+.env
+
+# 脚本运行产出
+output/
+
+# Python 缓存
+__pycache__/
+*.pyc
