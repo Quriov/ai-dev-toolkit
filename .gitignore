@@ -1,0 +1,8 @@
+# secrets — 绝不提交
+**/.secrets/
+**/cookies.json
+**/*.env
+.env
+# python
+**/__pycache__/
+*.pyc
