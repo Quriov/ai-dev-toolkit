@@ -1,0 +1,5 @@
+# YouTube 发评论/回复 —— 官方 YouTube Data API v3 写操作所需依赖
+# 安装：pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
