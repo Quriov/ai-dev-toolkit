@@ -4,6 +4,8 @@ AI + 人类协作开发的工具包，包含 Claude Code 的 rules、hooks 和 s
 
 基于 Quriov 团队在 TikTok 美区电商数据管理系统的实战经验提炼。
 
+> 📚 **社媒"读+发"工具的完整项目上下文**（背景 / 架构 / 决策 / 踩坑 / 上手指南）见 [docs/README.md](docs/README.md)
+
 ## 快速安装
 
 ```bash
