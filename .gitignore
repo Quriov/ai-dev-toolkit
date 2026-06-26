@@ -1,6 +1,9 @@
 # secrets — 绝不提交
 **/.secrets/
 **/cookies.json
+**/cookies*.json
+**/token*.json
+**/client_secret*.json
 **/*.env
 .env
 # python

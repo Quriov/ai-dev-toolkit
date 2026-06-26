@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-往 YouTube 发评论 / 回复评论 —— 官方 YouTube Data API v3 写操作。
+往 YouTube 发评论 / 回复评论 —— 官方 YouTube Data API v3 写操作（纯标准库实现）。
 
 干什么：
   以你授权的 Google 账号身份，给某个 YouTube 视频发顶层评论，或回复某条已有评论。
-  用官方 Data API v3 的 commentThreads.insert / comments.insert。
+  调官方 Data API v3 的 commentThreads.insert / comments.insert。
+
+为什么是纯标准库：
+  本机 requests/urllib3（google-* 库底层用它）连 Google HTTPS 必崩
+  （SSL: UNEXPECTED_EOF_WHILE_READING）。实测标准库 urllib.request 连 Google 正常，
+  所以这里只用 urllib 跟 Google 通信，完全不碰 google-* / requests / httplib2。
 
 前置：
   1. 先放 .secrets/client_secret.json（OAuth 桌面应用凭据，从 Google Cloud 下载）。
@@ -36,16 +41,20 @@
 """
 import sys
 import json
+import time
 import argparse
+import urllib.request
+import urllib.parse
+import urllib.error
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+API_BASE = "https://www.googleapis.com/youtube/v3"
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 SECRETS_DIR = SKILL_ROOT / ".secrets"
-CLIENT_SECRET = SECRETS_DIR / "client_secret.json"
 TOKEN_FILE = SECRETS_DIR / "token.json"
 
 
@@ -54,23 +63,37 @@ def _fail(msg: str, code: int = 1) -> int:
     return code
 
 
-def load_credentials():
-    """从 .secrets/token.json 加载凭据；过期则用 refresh_token 刷新并回存。
+def _refresh_token(tok: dict) -> dict:
+    """用 urllib POST 刷新 access_token，回写 token.json，返回更新后的 dict。"""
+    data = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": tok["refresh_token"],
+            "client_id": tok["client_id"],
+            "client_secret": tok["client_secret"],
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        tok.get("token_uri", TOKEN_URI),
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        new = json.load(resp)
+    tok["access_token"] = new.get("access_token", tok.get("access_token"))
+    tok["expiry_epoch"] = int(time.time()) + int(new.get("expires_in", 3600))
+    if new.get("scope"):
+        tok["scope"] = new["scope"]
+    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+        json.dump(tok, f, ensure_ascii=False, indent=2)
+    return tok
 
-    返回 (creds, None) 成功；(None, 错误退出码) 失败（调用方据此返回）。
+
+def load_token():
+    """从 .secrets/token.json 读令牌；过期（或快过期）则用 refresh_token 刷新并回存。
+
+    返回 (tok_dict, None) 成功；(None, 错误退出码) 失败。
     """
-    # 延迟 import，缺依赖时给清晰提示
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-    except ImportError:
-        return None, _fail(
-            "[错误] 缺少依赖 google-auth / google-auth-oauthlib。请先安装：\n"
-            "  pip install -r requirements.txt "
-            "--trusted-host pypi.org --trusted-host files.pythonhosted.org",
-            2,
-        )
-
     if not TOKEN_FILE.exists():
         return None, _fail(
             f"[错误] 找不到授权令牌：{TOKEN_FILE}\n"
@@ -82,81 +105,92 @@ def load_credentials():
         )
 
     try:
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-    except Exception as e:  # noqa: BLE001
+        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+            tok = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
         return None, _fail(
             f"[错误] token.json 读取失败（可能损坏）：{type(e).__name__}: {e}\n"
             "请删掉 .secrets/token.json，重新跑 oauth_setup.py 授权。",
             2,
         )
 
-    # 过期且有 refresh_token → 自动刷新并回存
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            with open(TOKEN_FILE, "w", encoding="utf-8") as f:
-                f.write(creds.to_json())
-            print("[信息] 令牌已过期，已用 refresh_token 自动刷新并回存。", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001
+    if not tok.get("access_token"):
+        return None, _fail(
+            "[错误] token.json 里没有 access_token。请重新跑 oauth_setup.py 授权。", 2
+        )
+
+    # 过期（留 60 秒余量）且有 refresh_token → 自动刷新
+    expiry = int(tok.get("expiry_epoch", 0))
+    if time.time() >= expiry - 60:
+        if not tok.get("refresh_token"):
             return None, _fail(
-                f"[错误] 刷新令牌失败：{type(e).__name__}: {e}\n"
+                "[错误] access_token 已过期且没有 refresh_token，无法自动续期。\n"
+                "请用 --force 重新跑 oauth_setup.py 授权（确保拿到 refresh_token）。",
+                1,
+            )
+        try:
+            tok = _refresh_token(tok)
+            print("[信息] 令牌已过期，已用 refresh_token 自动刷新并回存。", file=sys.stderr)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            return None, _fail(
+                f"[错误] 刷新令牌失败：HTTP {e.code}：{body}\n"
                 "refresh_token 可能已失效（被撤销 / 过期）。\n"
                 "请删掉 .secrets/token.json，重新跑 oauth_setup.py 授权。",
                 1,
             )
+        except Exception as e:  # noqa: BLE001
+            return None, _fail(
+                f"[错误] 刷新令牌失败：{type(e).__name__}: {e}\n"
+                "请删掉 .secrets/token.json，重新跑 oauth_setup.py 授权。",
+                1,
+            )
 
-    if not creds or not creds.valid:
-        return None, _fail(
-            "[错误] 令牌无效。请删掉 .secrets/token.json 重新跑 oauth_setup.py 授权。",
-            1,
-        )
-
-    return creds, None
-
-
-def build_youtube(creds):
-    """用凭据建 YouTube Data API 服务。"""
-    try:
-        from googleapiclient.discovery import build
-    except ImportError:
-        return None, _fail(
-            "[错误] 缺少依赖 google-api-python-client。请先安装：\n"
-            "  pip install -r requirements.txt "
-            "--trusted-host pypi.org --trusted-host files.pythonhosted.org",
-            2,
-        )
-    try:
-        yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
-        return yt, None
-    except Exception as e:  # noqa: BLE001
-        return None, _fail(f"[错误] 建立 YouTube 服务失败：{type(e).__name__}: {e}", 1)
+    return tok, None
 
 
-def verify_token(youtube):
-    """调一个只读轻量接口（取自己的频道）验证 token 有效。
+def _api_request(method: str, url: str, access_token: str, body: dict = None):
+    """用 urllib 调 YouTube Data API。返回解析后的 JSON。"""
+    data = None
+    headers = {"Authorization": f"Bearer {access_token}"}
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def verify_token(access_token: str):
+    """调只读轻量接口（取自己的频道）验证 token 有效。
 
     返回 (ok, channel_title, 错误信息)。
     """
+    url = f"{API_BASE}/channels?part=snippet&mine=true"
     try:
-        resp = youtube.channels().list(part="snippet", mine=True).execute()
+        resp = _api_request("GET", url, access_token)
         items = resp.get("items", [])
         if not items:
-            return True, None, None  # 授权有效但账号没有频道也算 token 可用
+            return True, None, None  # 授权有效但账号没频道也算可用
         title = items[0].get("snippet", {}).get("title")
         return True, title, None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return False, None, f"HTTP {e.code}: {body}"
     except Exception as e:  # noqa: BLE001
         return False, None, f"{type(e).__name__}: {e}"
 
 
-def do_comment(youtube, video_id: str, text: str):
+def do_comment(access_token: str, video_id: str, text: str):
     """发顶层评论：commentThreads.insert。"""
+    url = f"{API_BASE}/commentThreads?part=snippet"
     body = {
         "snippet": {
             "videoId": video_id,
             "topLevelComment": {"snippet": {"textOriginal": text}},
         }
     }
-    resp = youtube.commentThreads().insert(part="snippet", body=body).execute()
+    resp = _api_request("POST", url, access_token, body)
     top = resp.get("snippet", {}).get("topLevelComment", {})
     cid = top.get("id", "")
     return {
@@ -168,10 +202,11 @@ def do_comment(youtube, video_id: str, text: str):
     }
 
 
-def do_reply(youtube, parent_id: str, text: str):
+def do_reply(access_token: str, parent_id: str, text: str):
     """回复某条评论：comments.insert。"""
+    url = f"{API_BASE}/comments?part=snippet"
     body = {"snippet": {"parentId": parent_id, "textOriginal": text}}
-    resp = youtube.comments().insert(part="snippet", body=body).execute()
+    resp = _api_request("POST", url, access_token, body)
     cid = resp.get("id", "")
     return {
         "posted": True,
@@ -184,7 +219,7 @@ def do_reply(youtube, parent_id: str, text: str):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="往 YouTube 发评论/回复评论（官方 Data API v3；默认 dry-run，--send 才真发）"
+        description="往 YouTube 发评论/回复评论（官方 Data API v3，纯标准库；默认 dry-run，--send 才真发）"
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
@@ -219,16 +254,14 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    creds, err = load_credentials()
+    tok, err = load_token()
     if err is not None:
         return err
 
-    youtube, err = build_youtube(creds)
-    if err is not None:
-        return err
+    access_token = tok["access_token"]
 
     # 验证 token（dry-run 和真发都先验证一次）
-    ok, channel_title, verr = verify_token(youtube)
+    ok, channel_title, verr = verify_token(access_token)
     if not ok:
         print(
             f"[错误] token 验证失败：{verr}\n"
@@ -265,17 +298,21 @@ def main() -> int:
     # 真发
     try:
         if mode == "comment":
-            result = do_comment(youtube, args.video, args.text)
+            result = do_comment(access_token, args.video, args.text)
         else:
-            result = do_reply(youtube, args.parent, args.text)
-    except Exception as e:  # noqa: BLE001
-        print(f"[发送失败] {type(e).__name__}: {e}", file=sys.stderr)
+            result = do_reply(access_token, args.parent, args.text)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(f"[发送失败] HTTP {e.code}：{body}", file=sys.stderr)
         print(
             "[排查方向] (1) 视频/评论 ID 是否正确、评论是否开放"
             " (2) 配额是否用尽（写操作耗配额较多）"
             " (3) 平台是否把 API 评论判为垃圾拦截。详见 SKILL.md「已知坑」。",
             file=sys.stderr,
         )
+        return 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[发送失败] {type(e).__name__}: {e}", file=sys.stderr)
         return 1
 
     sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")

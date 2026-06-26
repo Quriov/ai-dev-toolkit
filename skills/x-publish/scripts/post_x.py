@@ -48,9 +48,9 @@ import paramiko  # noqa: E402
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 SERVER_JSON = SKILL_ROOT / ".secrets" / "server.json"
 
-# 服务器上的固定路径(由 ai-infohub 维护，与 x-research 同源)
-REMOTE_PYTHON = r"C:\AIInfoHub\.venv\Scripts\python.exe"
-REMOTE_COOKIES = r"C:\AIInfoHub\data\cookies.json"
+# 服务器上的固定路径(独立 X 工具箱 QuriovXTools，与 x-research 同一工具箱)
+REMOTE_PYTHON = r"C:\QuriovXTools\.venv\Scripts\python.exe"
+REMOTE_COOKIES = r"C:\QuriovXTools\cookies\publish.json"
 REMOTE_TEMP_DIR = r"C:\Users\Administrator\AppData\Local\Temp"
 
 # dry-run 远程脚本：只验证，绝不调用 create_tweet。
@@ -64,7 +64,7 @@ def main():
     text = sys.argv[1]
     reply_to = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
     client = Client(language="en-US")
-    client.load_cookies(r"C:\AIInfoHub\data\cookies.json")
+    client.load_cookies(r"C:\QuriovXTools\cookies\publish.json")
     has_method = hasattr(client, "create_tweet")
     mode = "reply" if reply_to else "new_tweet"
     print(json.dumps({
@@ -82,6 +82,12 @@ main()
 
 # --send 远程脚本：真正发推/回复。
 # argv[1]=text  argv[2]=reply_to(可能为空字符串)
+#
+# ⚠️ 加固(防"发成功却误报失败"重发坑)：
+#   实测发现 twikit 解析返回时有 bug —— 推文其实已经发出去了，但解析阶段抛异常，
+#   会让脚本误报失败。用户若据此重发，就会在品牌号上重复发帖。
+#   所以这里把 create_tweet 包在 try 里：抛异常时不直接报彻底失败，而是输出
+#   maybe_posted=true，提示"可能已发出，先去账号确认，勿盲目重发"。
 REMOTE_SCRIPT_SEND = r'''
 import asyncio, sys, json
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -90,16 +96,41 @@ from twikit import Client
 async def main():
     text = sys.argv[1]
     reply_to = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
+    mode = "reply" if reply_to else "new_tweet"
     client = Client(language="en-US")
-    client.load_cookies(r"C:\AIInfoHub\data\cookies.json")
+    client.load_cookies(r"C:\QuriovXTools\cookies\publish.json")
     kwargs = {"text": text}
     if reply_to:
         kwargs["reply_to"] = reply_to
-    t = await client.create_tweet(**kwargs)
+    try:
+        t = await client.create_tweet(**kwargs)
+    except Exception as e:
+        # create_tweet 抛异常 ≠ 一定没发出。twikit 已知有"发成功但解析返回时报错"的 bug，
+        # 此时推文很可能已经在账号上了。绝不能报成"没发、可以重发"，否则会重复发帖。
+        # 尝试从异常对象里捞推文 id(某些版本会把已发出的 id 带在异常里)；捞不到就如实说需人工确认。
+        tid = ""
+        for attr in ("id", "tweet_id"):
+            v = getattr(e, attr, None)
+            if v:
+                tid = str(v)
+                break
+        out = {
+            "posted": False,
+            "maybe_posted": True,
+            "mode": mode,
+            "reply_to": reply_to,
+            "error": f"{type(e).__name__}: {e}",
+            "warning": "create_tweet 抛异常，但推文可能已发出！请先去账号确认，切勿盲目重发(会重复发帖)。",
+        }
+        if tid:
+            out["id"] = tid
+            out["url"] = f"https://x.com/i/status/{tid}"
+        print(json.dumps(out, ensure_ascii=False))
+        return
     tid = str(getattr(t, "id", ""))
     print(json.dumps({
         "posted": True,
-        "mode": "reply" if reply_to else "new_tweet",
+        "mode": mode,
         "id": tid,
         "reply_to": reply_to,
         "url": f"https://x.com/i/status/{tid}",
@@ -201,6 +232,24 @@ def main() -> int:
     remote_script_path = f"{REMOTE_TEMP_DIR}\\_xpublish_{uuid.uuid4().hex[:12]}.py"
 
     try:
+        # 0. 预检：发布账号 cookie 必须已配置(publish.json 存在)，否则友好提示并退出，不崩、不真发
+        sftp = ssh.open_sftp()
+        try:
+            try:
+                sftp.stat(REMOTE_COOKIES)
+            except IOError:
+                print(
+                    "[发布账号未配置] 服务器上找不到发布 cookie："
+                    f"{REMOTE_COOKIES}\n"
+                    "请先指定发布账号，并把该账号的 cookie 上传为 publish.json "
+                    "(格式：{\"auth_token\":\"...\",\"ct0\":\"...\"})。\n"
+                    "在配置好之前，dry-run 和真发都无法进行。",
+                    file=sys.stderr,
+                )
+                return 2
+        finally:
+            sftp.close()
+
         # 1. SFTP 上传远程脚本
         sftp = ssh.open_sftp()
         try:
@@ -232,9 +281,9 @@ def main() -> int:
                 file=sys.stderr,
             )
             print(
-                "[排查方向] (1) 服务器 venv/twikit 是否可用 "
-                "(2) cookie 是否过期(C:\\AIInfoHub\\data\\cookies.json) "
-                "(3) X 风控/发推被限。cookie 失效需在服务器上更新，由 ai-infohub 维护。",
+                "[排查方向] (1) 服务器 venv/twikit 是否可用(C:\\QuriovXTools\\.venv) "
+                "(2) 发布 cookie 是否过期(C:\\QuriovXTools\\cookies\\publish.json) "
+                "(3) X 风控/发推被限。cookie 失效需重新提取并上传 publish.json。",
                 file=sys.stderr,
             )
             return 1
@@ -250,6 +299,16 @@ def main() -> int:
             if data.get("posted"):
                 print(
                     f"[成功] 已发出 ({data.get('mode')})：{data.get('url')}",
+                    file=sys.stderr,
+                )
+            elif data.get("maybe_posted"):
+                print(
+                    "[⚠️ 可能已发出，切勿盲目重发] create_tweet 抛了异常，"
+                    "但推文很可能已经发出去了(twikit 已知会'发成功却解析报错')。\n"
+                    f"  异常：{data.get('error')}\n"
+                    + (f"  可能的推文链接：{data.get('url')}\n" if data.get("url") else "")
+                    + "  请先去账号亲自确认有没有这条推文，确认没发出再重发；"
+                    "否则会在账号上重复发帖。",
                     file=sys.stderr,
                 )
             elif data.get("dry_run"):

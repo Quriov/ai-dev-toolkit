@@ -19,6 +19,20 @@ description: YouTube 深度调研：通过 YouTube Data API v3（免费、每天
 
 ---
 
+## 配置（第一步：拿一个免费 API key）
+
+> 这个 key 免费、不绑卡，每天 1 万配额。把它填进下面 URL 模板里的 `YOUR_API_KEY`。
+
+1. 打开 https://console.cloud.google.com/ ，登录 Google 账号
+2. 顶部新建/选择一个项目
+3. 启用接口：https://console.cloud.google.com/apis/library/youtube.googleapis.com → 点"启用"
+4. 建 key：https://console.cloud.google.com/apis/credentials → 创建凭据 → API 密钥 → 复制那串(形如 `AIzaSy...`)
+5. (可选)限制该 key 只用于 YouTube Data API v3，更安全
+
+说明：创建 API 密钥不需要绑信用卡。
+
+---
+
 ## 二、决策树：选哪条路？
 
 ```

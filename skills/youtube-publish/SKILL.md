@@ -47,8 +47,9 @@ description: 往 YouTube 发评论 + 回复评论。用官方 YouTube Data API v
 
 ### 第 2 步：跑一次授权（生成令牌）
 
+> 本工具纯 Python 标准库实现，无需安装任何第三方依赖，直接跑下面这条即可。
+
 ```
-pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 python scripts\oauth_setup.py
 ```
 
@@ -181,9 +182,9 @@ YouTube 一读一写互为姊妹（research 读、publish 写）；x-publish 是
 | `SKILL.md` | 本文档 |
 | `scripts/oauth_setup.py` | **一次性授权**：弹浏览器走 OAuth2，生成 `.secrets/token.json` |
 | `scripts/post_comment.py` | **主入口**：发评论 / 回复评论。默认 dry-run，`--send` 才真发 |
-| `requirements.txt` | 依赖（google-api-python-client / google-auth-oauthlib / google-auth-httplib2） |
+| `requirements.txt` | 说明本工具纯 Python 标准库实现，无需安装任何第三方依赖 |
 | `.gitignore` | 忽略 `.secrets/`、令牌、缓存等 |
-| `SECRETS-README.txt` | 说明要放哪两个凭据文件（client_secret.json + token.json），放 skill 根目录可进 git；真凭据放 `.secrets/` |
+| `.secrets/README.txt` | 说明要放哪两个凭据文件（client_secret.json + token.json） |
 | `.secrets/client_secret.json` | OAuth 桌面应用凭据，**不进 git，需各自从 Google Cloud 下载** |
 | `.secrets/token.json` | 授权后自动生成的令牌，**不进 git，跑 oauth_setup.py 生成** |
 
