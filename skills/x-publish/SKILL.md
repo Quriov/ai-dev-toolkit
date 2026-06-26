@@ -52,7 +52,7 @@ python scripts/set_cookie.py --role publish --auth-token <你的auth_token> --ct
    │  ② SSH 连硅谷服务器(paramiko)
    │  ③ SFTP 上传远程发推/回复脚本到服务器临时目录
    ▼
-硅谷服务器 47.251.0.142 (C:\AIInfoHub)
+硅谷服务器 47.251.0.142 (C:\QuriovXTools)
    │  ④ 用服务器 venv 跑 twikit 发推/回复(cookie 在服务器上)
    │  ⑤ 输出 JSON
    ▼
@@ -77,6 +77,8 @@ pip install -r requirements.txt
 ```
 
 **(b) 准备服务器连接配置 `.secrets/server.json`：**
+最省事的办法：把 skill 根目录的 `server.json.example` 复制到 `.secrets\server.json`，
+把 `password` 换成真实密码(找负责人要)。文件内容长这样：
 ```json
 {"host": "47.251.0.142", "port": 22, "user": "Administrator", "password": "服务器密码"}
 ```
@@ -155,8 +157,8 @@ python scripts/post_x.py --text "Thanks for the feedback!" --reply-to 1234567890
 |------|------|
 | **依赖服务器可用** | 全靠硅谷服务器(47.251.0.142)在线 + SSH 22 可达。服务器宕机/网络不通 → 发不了。报错先判断是不是 SSH 连不上。 |
 | **服务器限流** | 服务器对密集新连接有限流，握手可能失败。post_x.py 已内置 1 次退避重连(等 5 秒)。仍失败就隔一会儿再试。 |
-| **cookie 会过期** | cookie 在服务器 `C:\AIInfoHub\data\cookies.json`，由 **ai-infohub 维护**。失效后远程脚本会报"未登录/过期"。需在服务器上更新 cookie(不是本机)，找 ai-infohub 负责人刷新。 |
-| **依赖 twikit 补丁** | 服务器 venv 里的 twikit 2.3.3 已被 `C:\AIInfoHub\patch_twikit.py` 打过补丁。若 ai-infohub 重装 venv 没重打补丁，可能发不出。 |
+| **cookie 会过期** | 发布 cookie 在服务器 `C:\QuriovXTools\cookies\publish.json`。失效后远程脚本会报"未登录/过期"。需在服务器上更新 publish.json(不是本机)，重新提取发布账号 cookie 并上传，或本机跑 `python scripts\set_cookie.py --role publish --from-firefox` 后同步上去。 |
+| **依赖 twikit 补丁** | 服务器 venv 里的 twikit 2.3.3 已打过补丁。若重装 venv 没重打补丁，可能发不出。 |
 | **非官方库** | twikit 调的是 X 内部接口，非官方授权。X 一旦改接口可能突然失效。 |
 | **发推/封号风险** | 发推、尤其回复，比搜索更易触发风控。低频、人工确认、别拿主账号狂发。 |
 | **合规** | 自动化发推属 X ToS 灰色地带；禁止用于垃圾营销、刷量、未授权推广等用途。 |
@@ -182,4 +184,5 @@ python scripts/post_x.py --text "Thanks for the feedback!" --reply-to 1234567890
 | `scripts/post_x.py` | **主入口**：SSH 编排器，把发推/回复发到服务器执行并取回 JSON。默认 dry-run，`--send` 才真发 |
 | `requirements.txt` | 本机依赖（paramiko） |
 | `.gitignore` | 忽略 `.secrets/` 等凭据文件 |
+| `server.json.example` | 服务器连接配置模板(占位密码)，复制到 `.secrets/server.json` 后填真实密码 |
 | `.secrets/server.json` | 服务器连接信息(host/port/user/password)，**不进 git，需各自创建** |

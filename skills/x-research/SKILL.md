@@ -52,7 +52,7 @@ python scripts/set_cookie.py --role search --auth-token <你的auth_token> --ct0
    │  ② SSH 连硅谷服务器(paramiko)
    │  ③ SFTP 上传远程搜索脚本到服务器临时目录
    ▼
-硅谷服务器 47.251.0.142 (C:\AIInfoHub)
+硅谷服务器 47.251.0.142 (C:\QuriovXTools)
    │  ④ 用服务器 venv 跑 twikit 搜 X(cookie 在服务器上)
    │  ⑤ 输出 JSON
    ▼
@@ -62,7 +62,7 @@ python scripts/set_cookie.py --role search --auth-token <你的auth_token> --ct0
 **为什么不在本机直接跑 twikit？**
 - X 没有免费公开搜索接口，官方 API 收费且门槛高。
 - 本机(国内 IP)直连 X **过不了反爬**，twikit 本机路线实测确认不通。
-- 硅谷服务器 IP 干净 + cookie 有效 + 已被 ai-infohub 打过 twikit 补丁 → 能稳定搜出真实推文。
+- 硅谷服务器 IP 干净 + cookie 有效 + venv 里的 twikit 已打过补丁 → 能稳定搜出真实推文。
 
 所以本 skill 的 `search_x.py` 只是个**编排器(orchestrator)**：把搜索任务发到服务器执行，取回结果。真正干活的 twikit 跑在服务器上。
 
@@ -79,6 +79,8 @@ pip install -r requirements.txt
 ```
 
 **(b) 准备服务器连接配置 `.secrets/server.json`：**
+最省事的办法：把 skill 根目录的 `server.json.example` 复制到 `.secrets\server.json`，
+把 `password` 换成真实密码(找负责人要)。文件内容长这样：
 ```json
 {"host": "47.251.0.142", "port": 22, "user": "Administrator", "password": "服务器密码"}
 ```
@@ -186,8 +188,8 @@ python scripts/search_x.py "smart glasses" --count 30 --product Latest
 |------|------|
 | **依赖服务器可用** | 搜索全靠硅谷服务器(47.251.0.142)在线 + SSH 22 端口可达。服务器宕机/网络不通 → 搜不了。报错先判断是不是 SSH 连不上。 |
 | **服务器限流** | 服务器对密集新连接有限流，握手可能失败。search_x.py 已内置 1 次退避重连(等 5 秒)。仍失败就隔一会儿再试。 |
-| **cookie 会过期** | cookie 在服务器 `C:\AIInfoHub\data\cookies.json`，由 **ai-infohub 维护**。失效后远程脚本会报"未登录/过期"。**需在服务器上更新 cookie**(不是本机)，找 ai-infohub 负责人刷新。 |
-| **依赖 twikit 补丁** | 服务器 venv 里的 twikit 2.3.3 已被 `C:\AIInfoHub\patch_twikit.py` 打过补丁(持久状态)。若 ai-infohub 重装 venv 没重打补丁，可能搜不出。 |
+| **cookie 会过期** | 搜索 cookie 在服务器 `C:\QuriovXTools\cookies\search.json`。失效后远程脚本会报"未登录/过期"。**需在服务器上更新 search.json**(不是本机)，重新提取搜索账号 cookie 并上传，或本机跑 `python scripts\set_cookie.py --role search --from-firefox` 后同步上去。 |
+| **依赖 twikit 补丁** | 服务器 venv 里的 twikit 2.3.3 已打过补丁(持久状态)。若重装 venv 没重打补丁，可能搜不出。 |
 | **非官方库** | twikit 调的是 X 内部接口，非官方授权。X 一旦改接口可能突然失效。 |
 | **账号封禁风险** | 高频调用可能触发 X 风控甚至封号。低频使用，别拿主账号狂刷。 |
 | **凭据安全** | 服务器密码、cookie **绝不能进 git**。`.secrets/` 已被 `.gitignore` 忽略；脚本只从 `.secrets/server.json` 读连接信息，不 hardcode；不打印密码、不打印 cookie。 |
@@ -216,4 +218,5 @@ python scripts/search_x.py "smart glasses" --count 30 --product Latest
 | `scripts/login_export_cookies.py` | **已废弃**：旧的本机 twikit 登录路线(本机过不了反爬，已确认不通)，仅留历史记录 |
 | `requirements.txt` | 本机依赖（paramiko） |
 | `.gitignore` | 忽略 `.secrets/` 等凭据文件 |
+| `server.json.example` | 服务器连接配置模板(占位密码)，复制到 `.secrets/server.json` 后填真实密码 |
 | `.secrets/server.json` | 服务器连接信息(host/port/user/password)，**不进 git，需各自创建** |

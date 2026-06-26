@@ -154,6 +154,23 @@ def main() -> int:
     remote_script_path = f"{REMOTE_TEMP_DIR}\\_xsearch_{uuid.uuid4().hex[:12]}.py"
 
     try:
+        # 0. 预检：搜索账号 cookie 必须已配置(search.json 存在)，否则友好提示并退出，不崩、不白跑远程
+        sftp = ssh.open_sftp()
+        try:
+            try:
+                sftp.stat(REMOTE_COOKIES)
+            except IOError:
+                print(
+                    "[搜索 cookie 未配置] 服务器上找不到搜索 cookie："
+                    f"{REMOTE_COOKIES}\n"
+                    "请先跑 `python scripts\\set_cookie.py --role search --from-firefox` "
+                    "配好搜索账号 cookie(会上传为 search.json)，再来搜。",
+                    file=sys.stderr,
+                )
+                return 2
+        finally:
+            sftp.close()
+
         # 1. SFTP 上传远程脚本
         sftp = ssh.open_sftp()
         try:
