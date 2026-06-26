@@ -139,7 +139,8 @@ youtube-publish 的 `oauth_setup.py` 和 `post_comment.py` 全部改写为纯 Py
 在把 skill 推到 GitHub 之前，**必须**确认没有真实凭据被意外提交。核验命令：
 
 ```bash
-git diff --cached | grep -iE "Autk86420|Autk24680|GOCSPX-|ya29\.|odyaccu01"
+# 把占位符换成本项目真实的密码/账号片段再扫（别把真值写进文档或仓库）
+git diff --cached | grep -iE "<服务器密码片段>|<X账号名>|GOCSPX-|ya29\.|auth_token"
 ```
 
 如果有输出（命中），说明凭据被意外加进了暂存区，立即取消这次提交并检查。
