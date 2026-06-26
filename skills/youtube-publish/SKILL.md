@@ -183,7 +183,7 @@ YouTube 一读一写互为姊妹（research 读、publish 写）；x-publish 是
 | `scripts/post_comment.py` | **主入口**：发评论 / 回复评论。默认 dry-run，`--send` 才真发 |
 | `requirements.txt` | 依赖（google-api-python-client / google-auth-oauthlib / google-auth-httplib2） |
 | `.gitignore` | 忽略 `.secrets/`、令牌、缓存等 |
-| `SECRETS-README.txt` | 说明要放哪两个凭据文件（client_secret.json + token.json），放 skill 根目录可进 git；真凭据放 `.secrets/` |
+| `.secrets/README.txt` | 说明要放哪两个凭据文件（client_secret.json + token.json） |
 | `.secrets/client_secret.json` | OAuth 桌面应用凭据，**不进 git，需各自从 Google Cloud 下载** |
 | `.secrets/token.json` | 授权后自动生成的令牌，**不进 git，跑 oauth_setup.py 生成** |
 

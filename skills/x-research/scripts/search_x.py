@@ -40,9 +40,9 @@ import paramiko  # noqa: E402
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 SERVER_JSON = SKILL_ROOT / ".secrets" / "server.json"
 
-# 服务器上的固定路径(由 ai-infohub 维护)
-REMOTE_PYTHON = r"C:\AIInfoHub\.venv\Scripts\python.exe"
-REMOTE_COOKIES = r"C:\AIInfoHub\data\cookies.json"
+# 服务器上的固定路径(独立 X 工具箱 QuriovXTools，与 ai-infohub 分开)
+REMOTE_PYTHON = r"C:\QuriovXTools\.venv\Scripts\python.exe"
+REMOTE_COOKIES = r"C:\QuriovXTools\cookies\search.json"
 REMOTE_TEMP_DIR = r"C:\Users\Administrator\AppData\Local\Temp"
 
 # 远程搜索脚本(上传到服务器执行)。字段用 getattr 兜底，避免单字段缺失导致整脚本崩。
@@ -56,7 +56,7 @@ async def main():
     count = int(sys.argv[2]) if len(sys.argv) > 2 else 20
     product = sys.argv[3] if len(sys.argv) > 3 else "Latest"
     client = Client(language="en-US")
-    client.load_cookies(r"C:\AIInfoHub\data\cookies.json")
+    client.load_cookies(r"C:\QuriovXTools\cookies\search.json")
     tweets = await client.search_tweet(query, product)
     out = []
     for t in list(tweets)[:count]:
@@ -185,9 +185,9 @@ def main() -> int:
                 file=sys.stderr,
             )
             print(
-                "[排查方向] (1) 服务器 venv/twikit 是否可用 "
-                "(2) cookie 是否过期(C:\\AIInfoHub\\data\\cookies.json) "
-                "(3) X 风控。cookie 失效需在服务器上更新，由 ai-infohub 维护。",
+                "[排查方向] (1) 服务器 venv/twikit 是否可用(C:\\QuriovXTools\\.venv) "
+                "(2) cookie 是否过期(C:\\QuriovXTools\\cookies\\search.json) "
+                "(3) X 风控。cookie 失效需重新提取并上传 search.json。",
                 file=sys.stderr,
             )
             return 1
